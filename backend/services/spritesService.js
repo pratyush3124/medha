@@ -37,11 +37,16 @@ class SpritesService {
     return res.json();
   }
 
-  async createSprite(name) {
+  async createSprite(name, labels = []) {
+    const body = { name };
+    if (labels.length > 0) {
+      body.labels = labels;
+    }
+
     const res = await fetch(`${API_BASE}/sprites`, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify({ name })
+      body: JSON.stringify(body)
     });
 
     if (!res.ok) {
@@ -74,6 +79,7 @@ class SpritesService {
       ip: sprite.url ? sprite.url.replace('https://', '').replace('http://', '').split('/')[0] : null,
       url: sprite.url,
       organization: sprite.organization || sprite.org_slug,
+      labels: sprite.labels || [],
       createdAt: sprite.created_at,
       updatedAt: sprite.updated_at
     };

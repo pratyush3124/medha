@@ -1,30 +1,50 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
+const { eq, and } = require('drizzle-orm');
 const router = express.Router();
 
-module.exports = function(spritesService) {
+const { requireAuth } = require('../middleware/auth');
+
+module.exports = function (spritesService, db) {
+  const { spriteOwnership } = require('../db/schema');
+
+  router.use(requireAuth);
+
+  async function getUserSpriteNames(userId) {
+    const rows = await db
+      .select({ spriteName: spriteOwnership.spriteName })
+      .from(spriteOwnership)
+      .where(eq(spriteOwnership.userId, userId));
+    return new Set(rows.map((r) => r.spriteName));
+  }
+
   router.get('/', async (req, res) => {
     try {
       const { prefix, max_results } = req.query;
       const result = await spritesService.listSprites({
         prefix,
-        maxResults: max_results ? parseInt(max_results) : 50
+        maxResults: max_results ? parseInt(max_results) : 50,
       });
 
+      const userSpriteNames = await getUserSpriteNames(req.user.id);
+
       const sandboxes = await Promise.all(
-        result.sprites.map(async (sprite) => {
-          try {
-            const details = await spritesService.getSprite(sprite.name);
-            return spritesService.mapToSandbox(details);
-          } catch {
-            return spritesService.mapToSandbox(sprite);
-          }
-        })
+        result.sprites
+          .filter((sprite) => userSpriteNames.has(sprite.name))
+          .map(async (sprite) => {
+            try {
+              const details = await spritesService.getSprite(sprite.name);
+              return spritesService.mapToSandbox(details);
+            } catch {
+              return spritesService.mapToSandbox(sprite);
+            }
+          })
       );
 
       res.json({
         sandboxes,
         hasMore: result.has_more,
-        continuationToken: result.next_continuation_token
+        continuationToken: result.next_continuation_token,
       });
     } catch (err) {
       console.error('List sandboxes error:', err);
@@ -34,6 +54,16 @@ module.exports = function(spritesService) {
 
   router.get('/:name', async (req, res) => {
     try {
+      const owned = await db
+        .select()
+        .from(spriteOwnership)
+        .where(
+          and(eq(spriteOwnership.userId, req.user.id), eq(spriteOwnership.spriteName, req.params.name))
+        );
+      if (owned.length === 0) {
+        return res.status(403).json({ error: 'Not your sandbox' });
+      }
+
       const sprite = await spritesService.getSprite(req.params.name);
       res.json({ sandbox: spritesService.mapToSandbox(sprite) });
     } catch (err) {
@@ -48,7 +78,15 @@ module.exports = function(spritesService) {
       const rawName = name || 'sprite-' + Math.floor(Math.random() * 10000);
       const spriteName = rawName.toLowerCase().replace(/[^a-z0-9-]/g, '');
 
-      const sprite = await spritesService.createSprite(spriteName);
+      const sprite = await spritesService.createSprite(spriteName, [req.user.sprite_label]);
+
+      await db.insert(spriteOwnership).values({
+        id: randomUUID(),
+        userId: req.user.id,
+        spriteName,
+        createdAt: new Date().toISOString(),
+      });
+
       res.status(201).json({ sandbox: spritesService.mapToSandbox(sprite) });
     } catch (err) {
       console.error('Create sandbox error:', err);
@@ -58,7 +96,18 @@ module.exports = function(spritesService) {
 
   router.delete('/:name', async (req, res) => {
     try {
+      const owned = await db
+        .select()
+        .from(spriteOwnership)
+        .where(
+          and(eq(spriteOwnership.userId, req.user.id), eq(spriteOwnership.spriteName, req.params.name))
+        );
+      if (owned.length === 0) {
+        return res.status(403).json({ error: 'Not your sandbox' });
+      }
+
       await spritesService.deleteSprite(req.params.name);
+      await db.delete(spriteOwnership).where(eq(spriteOwnership.spriteName, req.params.name));
       res.status(204).send();
     } catch (err) {
       console.error('Delete sandbox error:', err);
