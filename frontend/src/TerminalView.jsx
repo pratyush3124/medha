@@ -43,8 +43,8 @@ export default function TerminalView({ sandbox, onExit }) {
     fitAddonRef.current = fitAddon;
 
     // Connect to WebSocket
-    // Hardcoding localhost:3001 for now, in prod it would be dynamic
-    const ws = new WebSocket(`ws://localhost:3001/ws/terminal?spriteName=${sandbox.name}`);
+    const wsBase = import.meta.env.VITE_PUBLIC_BACKEND_URL.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsBase}/ws/terminal?spriteName=${sandbox.name}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

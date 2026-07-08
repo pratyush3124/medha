@@ -6,9 +6,11 @@ function App() {
   const [activeSandbox, setActiveSandbox] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL;
+
   const fetchSandboxes = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/sandboxes');
+      const res = await fetch(`${BACKEND_URL}/api/sandboxes`);
       const data = await res.json();
       setSandboxes(data.sandboxes);
     } catch (err) {
@@ -23,7 +25,7 @@ function App() {
   const createSandbox = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/sandboxes', {
+      const res = await fetch(`${BACKEND_URL}/api/sandboxes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Sprite-' + Math.floor(Math.random() * 1000) })
